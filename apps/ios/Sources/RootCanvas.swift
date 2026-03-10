@@ -440,37 +440,8 @@ private struct CanvasContent: View {
     private var brightenButtons: Bool { self.systemColorScheme == .light }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack {
             ScreenTab()
-
-            VStack(spacing: 10) {
-                OverlayButton(systemImage: "text.bubble.fill", brighten: self.brightenButtons) {
-                    self.openChat()
-                }
-                .accessibilityLabel("Chat")
-
-                if self.talkButtonEnabled {
-                    // Talk mode lives on a side bubble so it doesn't get buried in settings.
-                    OverlayButton(
-                        systemImage: self.appModel.talkMode.isEnabled ? "waveform.circle.fill" : "waveform.circle",
-                        brighten: self.brightenButtons,
-                        tint: self.appModel.seamColor,
-                        isActive: self.appModel.talkMode.isEnabled)
-                    {
-                        let next = !self.appModel.talkMode.isEnabled
-                        self.talkEnabled = next
-                        self.appModel.setTalkEnabled(next)
-                    }
-                    .accessibilityLabel("Talk Mode")
-                }
-
-                OverlayButton(systemImage: "gearshape.fill", brighten: self.brightenButtons) {
-                    self.openSettings()
-                }
-                .accessibilityLabel("Settings")
-            }
-            .padding(.top, 10)
-            .padding(.trailing, 10)
         }
         .overlay(alignment: .center) {
             if self.appModel.talkMode.isEnabled {
@@ -478,22 +449,33 @@ private struct CanvasContent: View {
                     .transition(.opacity)
             }
         }
-        .overlay(alignment: .bottomLeading) {
-            StatusPill(
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            HomeToolbar(
                 gateway: self.gatewayStatus,
                 voiceWakeEnabled: self.voiceWakeEnabled,
                 activity: self.statusActivity,
-                compact: true,
                 brighten: self.brightenButtons,
-                onTap: {
+                talkButtonEnabled: self.talkButtonEnabled,
+                talkActive: self.appModel.talkMode.isEnabled,
+                talkTint: self.appModel.seamColor,
+                onStatusTap: {
                     if self.gatewayStatus == .connected {
                         self.showGatewayActions = true
                     } else {
                         self.openSettings()
                     }
+                },
+                onChatTap: {
+                    self.openChat()
+                },
+                onTalkTap: {
+                    let next = !self.appModel.talkMode.isEnabled
+                    self.talkEnabled = next
+                    self.appModel.setTalkEnabled(next)
+                },
+                onSettingsTap: {
+                    self.openSettings()
                 })
-                .padding(.leading, 10)
-                .safeAreaPadding(.bottom, 12)
         }
         .overlay(alignment: .topLeading) {
             if let voiceWakeToastText, !voiceWakeToastText.isEmpty {
@@ -517,63 +499,6 @@ private struct CanvasContent: View {
             voiceWakeEnabled: self.voiceWakeEnabled,
             cameraHUDText: self.cameraHUDText,
             cameraHUDKind: self.cameraHUDKind)
-    }
-}
-
-private struct OverlayButton: View {
-    let systemImage: String
-    let brighten: Bool
-    var tint: Color?
-    var isActive: Bool = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: self.action) {
-            Image(systemName: self.systemImage)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(self.isActive ? (self.tint ?? .primary) : .primary)
-                .padding(10)
-                .background {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            .white.opacity(self.brighten ? 0.26 : 0.18),
-                                            .white.opacity(self.brighten ? 0.08 : 0.04),
-                                            .clear,
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing))
-                                .blendMode(.overlay)
-                        }
-                        .overlay {
-                            if let tint {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [
-                                                tint.opacity(self.isActive ? 0.22 : 0.14),
-                                                tint.opacity(self.isActive ? 0.10 : 0.06),
-                                                .clear,
-                                            ],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing))
-                                    .blendMode(.overlay)
-                            }
-                        }
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(
-                                    (self.tint ?? .white).opacity(self.isActive ? 0.34 : (self.brighten ? 0.24 : 0.18)),
-                                    lineWidth: self.isActive ? 0.7 : 0.5)
-                        }
-                        .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
-                }
-        }
-        .buttonStyle(.plain)
     }
 }
 
