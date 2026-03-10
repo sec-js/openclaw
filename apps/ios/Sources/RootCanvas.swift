@@ -67,6 +67,23 @@ struct RootCanvas: View {
         return .none
     }
 
+    static func shouldPresentQuickSetup(
+        quickSetupDismissed: Bool,
+        showOnboarding: Bool,
+        hasPresentedSheet: Bool,
+        gatewayConnected: Bool,
+        hasExistingGatewayConfig: Bool,
+        discoveredGatewayCount: Int) -> Bool
+    {
+        guard !quickSetupDismissed else { return false }
+        guard !showOnboarding else { return false }
+        guard !hasPresentedSheet else { return false }
+        guard !gatewayConnected else { return false }
+        // If a gateway target is already configured (manual or last-known), skip quick setup.
+        guard !hasExistingGatewayConfig else { return false }
+        return discoveredGatewayCount > 0
+    }
+
     var body: some View {
         ZStack {
             CanvasContent(
@@ -372,7 +389,12 @@ struct RootCanvas: View {
     }
 
     private func hasExistingGatewayConfig() -> Bool {
+        if self.appModel.activeGatewayConnectConfig != nil { return true }
         if GatewaySettingsStore.loadLastGatewayConnection() != nil { return true }
+
+        let preferredStableID = self.preferredGatewayStableID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !preferredStableID.isEmpty { return true }
+
         let manualHost = self.manualGatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
         return self.manualGatewayEnabled && !manualHost.isEmpty
     }
@@ -392,11 +414,14 @@ struct RootCanvas: View {
     }
 
     private func maybeShowQuickSetup() {
-        guard !self.quickSetupDismissed else { return }
-        guard !self.showOnboarding else { return }
-        guard self.presentedSheet == nil else { return }
-        guard self.appModel.gatewayServerName == nil else { return }
-        guard !self.gatewayController.gateways.isEmpty else { return }
+        let shouldPresent = Self.shouldPresentQuickSetup(
+            quickSetupDismissed: self.quickSetupDismissed,
+            showOnboarding: self.showOnboarding,
+            hasPresentedSheet: self.presentedSheet != nil,
+            gatewayConnected: self.appModel.gatewayServerName != nil,
+            hasExistingGatewayConfig: self.hasExistingGatewayConfig(),
+            discoveredGatewayCount: self.gatewayController.gateways.count)
+        guard shouldPresent else { return }
         self.presentedSheet = .quickSetup
     }
 }
@@ -438,13 +463,14 @@ private struct CanvasContent: View {
     var openSettings: () -> Void
 
     private var brightenButtons: Bool { self.systemColorScheme == .light }
+    private var talkActive: Bool { self.appModel.talkMode.isEnabled || self.talkEnabled }
 
     var body: some View {
         ZStack {
             ScreenTab()
         }
         .overlay(alignment: .center) {
-            if self.appModel.talkMode.isEnabled {
+            if self.talkActive {
                 TalkOrbOverlay()
                     .transition(.opacity)
             }
@@ -456,7 +482,7 @@ private struct CanvasContent: View {
                 activity: self.statusActivity,
                 brighten: self.brightenButtons,
                 talkButtonEnabled: self.talkButtonEnabled,
-                talkActive: self.appModel.talkMode.isEnabled,
+                talkActive: self.talkActive,
                 talkTint: self.appModel.seamColor,
                 onStatusTap: {
                     if self.gatewayStatus == .connected {
@@ -469,7 +495,7 @@ private struct CanvasContent: View {
                     self.openChat()
                 },
                 onTalkTap: {
-                    let next = !self.appModel.talkMode.isEnabled
+                    let next = !self.talkActive
                     self.talkEnabled = next
                     self.appModel.setTalkEnabled(next)
                 },
@@ -491,6 +517,12 @@ private struct CanvasContent: View {
             isPresented: self.$showGatewayActions,
             onDisconnect: { self.appModel.disconnectGateway() },
             onOpenSettings: { self.openSettings() })
+        .onAppear {
+            // Keep the runtime talk state aligned with persisted toggle state on cold launch.
+            if self.talkEnabled != self.appModel.talkMode.isEnabled {
+                self.appModel.setTalkEnabled(self.talkEnabled)
+            }
+        }
     }
 
     private var statusActivity: StatusPill.Activity? {
